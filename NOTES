@@ -1,0 +1,6 @@
+Where
+
+    tags = EXIF.process_file(f)
+
+use tags['EXIF DateTimeOriginal']
+
