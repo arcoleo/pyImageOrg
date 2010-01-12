@@ -22,12 +22,20 @@ class CommandLineParameters(object):
         self.parser.add_option('-d', '--dry_run', action='store_true', dest='dry_run')
         self.parser.add_option('-r', '--recurse', action='store_true', dest='recurse')
         self.parser.add_option('-l', '--lower_case_ext', action='store_true', dest='lower_case_ext')
+        self.parser.add_option('-u', '--upper_case_ext', action='store_true', dest='uppoer_case_ext')
         self.parser.add_option('-o', '--overwrite', action='store_true', dest='overwrite')
         (self.options, self.args) = self.parser.parse_args()
 
     def _validate_options(self):
+        if not self.options.recurse:
+            print 'Recurse=False not implemented yet.'
+            sys.exit(1)
         if len(self.args) != 1:
             print 'Invalid number of parameters', self.args
+            sys.exit(1)
+        if self.options.upper_case_ext and self.options.lower_case_ext:
+            print 'Upper and Lower case are conflicting options.'
+            sys.exit()
 
 
 class ProcessFiles(object):
@@ -71,11 +79,12 @@ class ProcessFiles(object):
         self.folder = dirname(curr_file)
         self.target = join(self.folder, self.new_name)
         print (curr_file, self.target)
-        try:
-            os.rename(curr_file, self.target)
-        except Exception, ex:
-            print 'Rename Failed', ex
-            sys.exit(1)
+        if not self.cl.options.dry_run:
+            try:
+                os.rename(curr_file, self.target)
+            except Exception, ex:
+                print 'Rename Failed', ex
+                sys.exit(1)
 
 
 def main():
