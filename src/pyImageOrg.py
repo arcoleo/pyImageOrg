@@ -6,11 +6,13 @@ import sys
 import os
 from os.path import join, getsize, basename, dirname
 from optparse import OptionParser
+import fnmatch
 import EXIF
 
-VALID_FILES = ('.JPG', '.jpg')
-IGNORE_FILES = ('.*')
+VALID_GLOB = ('.JPG', '.jpg')
+IGNORE_GLOB = ('.*', '_*')
 RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(MM)s%(SS)s"
+ORGANIZED_DIR_FORMAT = "%(YYYY)s%(MM)s%(DD)s"
 
 class CommandLineParameters(object):
     '''Parse Command Line Options'''
@@ -38,6 +40,9 @@ class CommandLineParameters(object):
             dest='upper_case_ext')
         self.parser.add_option('-o', '--overwrite', action='store_true',
             dest='overwrite')
+        self.parser.add_option('-z', '--organized_dir', action='store',
+            dest='organized_dir', help='Dir to copy all renamed files into,'+\
+            ' organized')
         (self.options, self.args) = self.parser.parse_args()
 
     def _validate_options(self):
@@ -52,6 +57,13 @@ class CommandLineParameters(object):
         if self.options.upper_case_ext and self.options.lower_case_ext:
             print 'Upper and Lower case are conflicting options.'
             sys.exit()
+
+
+class OrganizeFiles(object):
+    '''Organize Files'''
+
+    def __init__(self, curr_file):
+        pass
 
 
 class ProcessFiles(object):
@@ -78,9 +90,15 @@ class ProcessFiles(object):
                     for name in files) / (2 ** 20),
                 print 'M in', len(files), 'non-directory files'
             for curr_file in files:
-                if curr_file.endswith(VALID_FILES):
-                    self._process_current(join(root, curr_file))
-
+                skip = False
+                for match in IGNORE_GLOB:
+                    if fnmatch.fnmatch(curr_file, match):
+                        skip = True
+                if skip:
+                    continue
+                for match in VALID_GLOB:
+                    if fnmatch.fnmatch(curr_file, match):
+                        self._process_current(join(root, curr_file))
 
     def _get_extension(self, curr_file):
         '''Get/convert current file extention'''
