@@ -12,7 +12,7 @@ import EXIF
 VALID_GLOB = ('.JPG', '.jpg')
 IGNORE_GLOB = ('.*', '_*')
 RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(MM)s%(SS)s"
-ORGANIZED_DIR_FORMAT = "%(YYYY)s%(MM)s%(DD)s"
+ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
 
 class CommandLineParameters(object):
     '''Parse Command Line Options'''
@@ -40,9 +40,16 @@ class CommandLineParameters(object):
             dest='upper_case_ext')
         self.parser.add_option('-o', '--overwrite', action='store_true',
             dest='overwrite')
+        self.parser.add_option('-c', '--confirm_every', action='store_true',
+            dest='confirm_every', help='Confirm every action')
+        self.parser.add_option('--confirm_once', action='store_true',
+            dest='confirm_once', help='Confirm all renames once')
         self.parser.add_option('-z', '--organized_dir', action='store',
             dest='organized_dir', help='Dir to copy all renamed files into,'+\
             ' organized')
+        self.parser.add_option('-e', '--organize_existing', action='store_true',
+            dest='organize_existing', help='Organize existing files in ' +\
+            'ORGANIZED_DIR according to existing rules')
         (self.options, self.args) = self.parser.parse_args()
 
     def _validate_options(self):
@@ -56,7 +63,13 @@ class CommandLineParameters(object):
             sys.exit(1)
         if self.options.upper_case_ext and self.options.lower_case_ext:
             print 'Upper and Lower case are conflicting options.'
-            sys.exit()
+            sys.exit(1)
+        if (self.options.organized_dir == None) and self.options.organize_existing:
+            print '--organize_existing requires --organized_dir'
+            sys.exit(1)
+        if self.options.confirm_every and self.options.confirm_once:
+            print 'Cannot have both --confirm_every and --confirm_once'
+            sys.exit(1)
 
 
 class OrganizeFiles(object):
