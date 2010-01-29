@@ -9,7 +9,7 @@ from optparse import OptionParser
 import fnmatch
 import EXIF
 
-VALID_GLOB = ('.JPG', '.jpg')
+VALID_GLOB = ('*.JPG', '*.jpg')
 IGNORE_GLOB = ('.*', '_*')
 RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(MM)s%(SS)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
@@ -103,11 +103,15 @@ class ProcessFiles(object):
                     for name in files) / (2 ** 20),
                 print 'M in', len(files), 'non-directory files'
             for curr_file in files:
+                if self.cmd_line.options.verbose:
+                    print ('curr_file', curr_file)
                 skip = False
                 for match in IGNORE_GLOB:
                     if fnmatch.fnmatch(curr_file, match):
                         skip = True
                 if skip:
+                    if self.cmd_line.options.verbose:
+                        print 'skipping'
                     continue
                 for match in VALID_GLOB:
                     if fnmatch.fnmatch(curr_file, match):
