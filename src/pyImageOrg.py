@@ -120,8 +120,11 @@ class ProcessFiles(object):
         if self.cmd_line.options.lower_case_ext:
             extension = extension.lower()
         return extension
+
+    def _extract_tags(self, tags):
+        pass
         
-    def _format_time(self, curr_file, tags):
+    def _format_filename(self, curr_file, tags):
         '''Format time'''
         
         self.dto_str = tags.get('EXIF DateTimeOriginal').values
@@ -131,15 +134,19 @@ class ProcessFiles(object):
         self.dto['HH'], self.dto['MM'], self.dto['SS'] = \
             self.dto['time'].split(':')
         self.new_name = RENAME_FORMAT % self.dto
-        self.new_name = self.new_name + self._get_extension(curr_file)        
+        self.new_name = self.new_name + self._get_extension(curr_file)
+
+    def _format_dirname(self, curr_dir, tags):
+        pass
 
     def _process_current(self, curr_file):
         '''Process current file'''
         
         pfile = open(curr_file, 'rb')
-        tags = EXIF.process_file(pfile)
+        self._extract_tags(EXIF.process_file(pfile))
         pfile.close()
-        self._format_time(curr_file, tags)
+        self._format_filename(curr_file, tags)
+        self._format_dirname(dirname(curr_file), tags)
         self.folder = dirname(curr_file)
         self.target = join(self.folder, self.new_name)
         print (curr_file, self.target)
