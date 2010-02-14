@@ -11,7 +11,7 @@ import EXIF
 
 VALID_GLOB = ('*.JPG', '*.jpg')
 IGNORE_GLOB = ('.*', '_*')
-RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(MM)s%(SS)s"
+RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
 
 class CommandLineParameters(object):
@@ -126,7 +126,7 @@ class ProcessFiles(object):
         return extension
 
     def _extract_tags(self, tags):
-        pass
+        return tags
         
     def _format_filename(self, curr_file, tags):
         '''Format time'''
@@ -135,7 +135,7 @@ class ProcessFiles(object):
         self.dto['date'], self.dto['time'] = self.dto_str.split(' ')
         self.dto['YYYY'], self.dto['MM'], self.dto['DD'] = \
             self.dto['date'].split(':')
-        self.dto['HH'], self.dto['MM'], self.dto['SS'] = \
+        self.dto['HH'], self.dto['mm'], self.dto['SS'] = \
             self.dto['time'].split(':')
         self.new_name = RENAME_FORMAT % self.dto
         self.new_name = self.new_name + self._get_extension(curr_file)
@@ -147,7 +147,7 @@ class ProcessFiles(object):
         '''Process current file'''
         
         pfile = open(curr_file, 'rb')
-        self._extract_tags(EXIF.process_file(pfile))
+        tags = self._extract_tags(EXIF.process_file(pfile))
         pfile.close()
         self._format_filename(curr_file, tags)
         self._format_dirname(dirname(curr_file), tags)
