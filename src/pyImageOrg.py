@@ -46,7 +46,7 @@ class CommandLineParameters(object):
             dest='confirm_once', help='Confirm all renames once')
         self.parser.add_option('-z', '--organized_dir', action='store',
             dest='organized_dir', help='Dir to copy all renamed files into,'+\
-            ' organized')
+            ' organized', default='')
         self.parser.add_option('-e', '--organize_existing', action='store_true',
             dest='organize_existing', help='Organize existing files in ' +\
             'ORGANIZED_DIR according to existing rules')
@@ -117,6 +117,7 @@ class ProcessFiles(object):
                     if fnmatch.fnmatch(curr_file, match):
                         self._process_current(join(root, curr_file))
 
+
     def _get_extension(self, curr_file):
         '''Get/convert current file extention'''
         
@@ -141,16 +142,18 @@ class ProcessFiles(object):
         self.new_name = self.new_name + self._get_extension(curr_file)
 
     def _format_dirname(self, curr_dir, tags):
-        pass
+        self.organized_dir = join(self.cmd_line.options.organized_dir,
+            ORGANIZED_DIR_FORMAT % self.dto)
+        print ('organized_dir', self.organized_dir)
 
     def _process_current(self, curr_file):
         '''Process current file'''
         
         pfile = open(curr_file, 'rb')
-        tags = self._extract_tags(EXIF.process_file(pfile))
+        self.tags = self._extract_tags(EXIF.process_file(pfile))
         pfile.close()
-        self._format_filename(curr_file, tags)
-        self._format_dirname(dirname(curr_file), tags)
+        self._format_filename(curr_file, self.tags)
+        self._format_dirname(dirname(curr_file), self.tags)
         self.folder = dirname(curr_file)
         self.target = join(self.folder, self.new_name)
         print (curr_file, self.target)
@@ -161,6 +164,13 @@ class ProcessFiles(object):
                 print 'Rename Failed', ex
                 sys.exit(1)
 
+    def _move_current(self, curr_file):
+        '''Move file'''
+        print ('curr_file_move', curr_file)
+
+        # TODO: create target folder
+
+        
 
 def main():
     '''Run everything'''
