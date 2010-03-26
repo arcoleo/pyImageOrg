@@ -7,6 +7,7 @@ import os
 from os.path import join, getsize, basename, dirname
 from optparse import OptionParser
 import fnmatch
+import shutil
 import EXIF
 
 VALID_GLOB = ('*.JPG', '*.jpg')
@@ -156,21 +157,39 @@ class ProcessFiles(object):
         self._format_dirname(dirname(curr_file), self.tags)
         self.folder = dirname(curr_file)
         self.target = join(self.folder, self.new_name)
-        print (curr_file, self.target)
+        print ('process_current', curr_file, self.target)
         if not self.cmd_line.options.dry_run:
             try:
                 os.rename(curr_file, self.target)
             except Exception, ex:
                 print 'Rename Failed', ex
                 sys.exit(1)
+        self._move_current()
 
-    def _move_current(self, curr_file):
+
+    def _move_current(self):
         '''Move file'''
-        print ('curr_file_move', curr_file)
+        print ('curr_file_move', self.target, join(self.organized_dir, self.new_name))
 
-        # TODO: create target folder
+        print 'Creating target dir'
+        if not self.cmd_line.options.dry_run:
+            try:
+                os.makedirs(self.organized_dir)
+            except Exception, (errno, ex):
+                if errno in [17]:
+                    pass
+                else:
+                    print 'makedirs failed', errno, ex
+                    sys.exit(2)
 
-        
+        print 'Moving file'
+        if not self.cmd_line.options.dry_run:
+            try:
+                shutil.move(self.target, self.organized_dir)
+            except Exception, ex:
+                print 'move failed', ex
+                sys.exit(3)
+
 
 def main():
     '''Run everything'''
