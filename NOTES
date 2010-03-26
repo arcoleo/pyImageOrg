@@ -4,3 +4,7 @@ Where
 
 use tags.get('EXIF DateTimeOriginal').values
 
+---
+
+rename RENAME_FORMAT
+move to ORAGNIZED_DIR_FORMAT/currentname
