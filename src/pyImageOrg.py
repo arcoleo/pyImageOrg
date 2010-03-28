@@ -124,8 +124,7 @@ class ProcessFiles(object):
     '''Process image files'''
     
     def __init__(self, cmd_line):
-        if cmd_line.options.verbose:
-            print 'Processing Files'
+        log.debug('Processing Files')
         self.cmd_line = cmd_line
         self.new_name = None
         self.dto = {}
@@ -138,11 +137,10 @@ class ProcessFiles(object):
         '''Walk the path'''
         
         for root, dirs, files in os.walk(self.cmd_line.args[0]):
-            if self.cmd_line.options.verbose:
-                consume = sum(getsize(join(root, name)) \
-                    for name in files) / (2 ** 20),
-                log.info(root + 'consumes' + str(consume) + 'M in' +
-                    str(len(files)) + 'non-directory files')
+            consume = sum(getsize(join(root, name)) \
+                for name in files) / (2 ** 20)
+            log.info(root + 'consumes' + str(consume) + 'M in' +
+                str(len(files)) + 'non-directory files')
             for curr_file in files:
                 if self.cmd_line.options.verbose:
                     log.debug(('curr_file', curr_file))
@@ -182,7 +180,7 @@ class ProcessFiles(object):
                 raise Exception("Skip")
                 sys.exit()
         except Exception, ex:
-            print 'Error', ex, curr_file
+            log.error(('Error', ex, curr_file))
             if not self.cmd_line.options.queue_errors:
                 sys.exit(1)
             else:
