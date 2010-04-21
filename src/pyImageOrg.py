@@ -248,8 +248,8 @@ class ProcessFiles(object):
         if not self.cmd_line.options.dry_run:
             try:
                 shutil.move(self.target, self.organized_dir)
-            except shutil.Error, ex:
-                if 'already exists' in str(ex):
+            except shutil.Error as exc:
+                if 'already exists' in str(exc):
                     if self.cmd_line.options.overwrite:
                         if filecmp.cmp(self.target, join(self.organized_dir, self.new_name)):
                             if self.cmd_line.options.delete_dupes:
@@ -263,10 +263,9 @@ class ProcessFiles(object):
                                 join(self.organized_dir, self.new_name), 'differ'))
                             self._queue_quit()
                     else:
-                        log.critical((sys.exc_info()))
-                        sys.exit(3)
-            except Exception, ex:
-                log.error(('move failed', ex))
+                        log.warn(exc)
+            except Exception as exc:
+                log.error(('move failed', exc))
                 self._queue_quit()
 
 
