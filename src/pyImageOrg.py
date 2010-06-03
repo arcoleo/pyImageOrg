@@ -8,10 +8,12 @@ from os.path import join, getsize, basename, dirname
 from optparse import OptionParser
 import fnmatch
 import shutil
-import EXIF
-import filecmp
+from errno import EEXIST
 import logging
+import filecmp
+import EXIF
 import Image
+
 
 VALID_GLOB = ('*.JPG', '*.jpg')
 IGNORE_GLOB = ('.*', '_*')
@@ -283,14 +285,16 @@ class CompressedMirror(object):
     def __init__(self, cmd_line):
         self.cmd_line = cmd_line
         self.compressed_mirror = self.cmd_line.options.compressed_mirror
-        self._setup_path()
+        self._setup_path(self.compressed_mirror)
+        self._walk()
     
-    def _setup_path(self):
+    def _setup_path(self, path):
         try:
-            os.makedirs(self.compressed_mirror)
+            os.makedirs(path)
         except Exception as ex:
-            log.critical('Cannot make compressed mirror target: %s' % ex)
-            sys.exit()
+            if not ex.errno == EEXIST:
+                log.critical('Cannot make compressed mirror target: %s' % ex)
+                sys.exit()
     
     def _walk(self):
         '''Walk the path'''
@@ -312,11 +316,25 @@ class CompressedMirror(object):
                     continue
                 for match in VALID_GLOB:
                     if fnmatch.fnmatch(curr_file, match):
-                        self._compress_current(join(root, curr_file))
+                        self._compress_current(root, curr_file)
                         
     def _compress_current(self, root, curr_file):
-        log.debug(('root', root))
+        size = (1600, 1600)
+        sliced_root = root[len(self.cmd_line.options.organized_dir)+1:]
+        target_path = join(self.compressed_mirror, sliced_root)
+        target_file = join(target_path, curr_file)
+        source_image = join(root, curr_file)
+        log.debug(('root', sliced_root))
+        log.debug(('target_path', target_path))
         log.debug(('curr_file', curr_file))
+        log.debug(('target_file', target_file))
+        self._setup_path(target_path)
+        log.debug(('source_image', source_image))
+        source_img = Image.open(source_image)
+        target_img = source_img.copy()
+        target_img.thumbnail(size, Image.ANTIALIAS)
+        target_img.save(target_file)
+        #sys.exit()
 
 
     # TODO: locate/make target folder
