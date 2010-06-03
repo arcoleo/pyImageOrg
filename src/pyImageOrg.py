@@ -350,9 +350,10 @@ class CompressedMirror(object):
     def _compress_current(self, root, curr_file):
         size = (self.cmd_line.options.compressed_dimension,
                 self.cmd_line.options.compressed_dimension)
+        postfix = '--%sx.jpg' % self.cmd_line.options.compressed_dimension
         sliced_root = root[len(self.cmd_line.options.organized_dir)+1:]
         target_path = join(self.compressed_mirror, sliced_root)
-        target_file = join(target_path, curr_file)
+        target_file = join(target_path, curr_file[:-4] + postfix)
         source_image = join(root, curr_file)
         log.debug(('root', sliced_root))
         log.debug(('target_path', target_path))
