@@ -63,38 +63,47 @@ class CommandLineParameters(object):
     def _add_options(self):
         '''Add CL options'''
         
+        # Universal options
         self.parser.add_option('-v', '--verbose', action='store_true',
-            dest='verbose')
+            dest='verbose')        
         self.parser.add_option('-d', '--dry_run', action='store_true',
             dest='dry_run')
         self.parser.add_option('-r', '--recurse', action='store_true',
             dest='recurse', default=True)
         self.parser.add_option('--no_recurse', action='store_true',
             dest='no_recurse')
+        self.parser.add_option('-o', '--overwrite', action='store_true',
+            dest='overwrite')
+        self.parser.add_option('-q', '--queue_errors', action='store_true',
+            dest='queue_errors', 
+            help='Queue errors instead of stopping on them')
+                        
+        # Organizing options
         self.parser.add_option('-l', '--lower_case_ext', action='store_true',
             dest='lower_case_ext')
         self.parser.add_option('-u', '--upper_case_ext', action='store_true',
             dest='upper_case_ext')
-        self.parser.add_option('-o', '--overwrite', action='store_true',
-            dest='overwrite')
-        self.parser.add_option('-c', '--confirm_every', action='store_true',
-            dest='confirm_every', help='Confirm every action')
-        self.parser.add_option('--confirm_once', action='store_true',
-            dest='confirm_once', help='Confirm all renames once')
         self.parser.add_option('-z', '--organized_dir', action='store',
             dest='organized_dir', help='Dir to copy all renamed files into,'+\
             ' organized', default='')
         self.parser.add_option('-e', '--organize_existing', action='store_true',
             dest='organize_existing', help='Organize existing files in ' +\
             'ORGANIZED_DIR according to existing rules')
+                
+        # Mirroring options
         self.parser.add_option('--compressed_mirror', action='store',
             dest='compressed_mirror', help='Dir to maintain as a mirror of ' +\
             'organized_dir, but smaller.')
-        self.parser.add_option('--compression_ratio', action='store', 
-            type='int', dest='compression_ratio', 
-            help='percentage of compression ratio')
-        self.parser.add_option('-q', '--queue_errors', action='store_true',
-            dest='queue_errors', help='Queue errors instead of stopping on them')
+        self.parser.add_option('--compressed_dimension', action='store', 
+            type='int', dest='compressed_dimension', 
+            help='Square dimension of compression.  800 for example ' +\
+                'compresses to 800x800')
+        
+        # Unknown options
+        self.parser.add_option('-c', '--confirm_every', action='store_true',
+            dest='confirm_every', help='Confirm every action')
+        self.parser.add_option('--confirm_once', action='store_true',
+            dest='confirm_once', help='Confirm all renames once')
         self.parser.add_option('-p', '--delete_dupes', action='store_true',
             dest='delete_dupes', help='delete duplicates (source)')
         (self.options, self.args) = self.parser.parse_args()
@@ -102,20 +111,37 @@ class CommandLineParameters(object):
     def _validate_options(self):
         '''Validate the CL options'''
         
-        if not self.options.recurse:
-            print('Recurse=False not implemented yet.')
-            sys.exit(1)
+        # Validate required parameters
         if len(self.args) != 1:
             print(('Invalid number of parameters:', self.args))
             sys.exit(1)
+
+        # Validate universal options
+        if not self.options.recurse or self.options.no_recurse:
+            print('Recurse=False not implemented yet.')
+            sys.exit(1)
+        if self.options.recurse and self.options.no_recurse:
+            print('--recurse and --no_recurse are conflicting options.')
+            sys.exit(1)
+            
+        # Validate organizing options
         if self.options.upper_case_ext and self.options.lower_case_ext:
             print('Upper and Lower case are conflicting options.')
             sys.exit(1)
-        if (self.options.organized_dir == None) and self.options.organize_existing:
+
+        if (self.options.organized_dir == None) and \
+            self.options.organize_existing:
             print('--organize_existing requires --organized_dir')
             sys.exit(1)
+
+        # Validate mirroring options
+        if self.options.compressed_dimension < 1:
+            print('Invalid compressed dimension')
+            sys.exit(1)
+
+        # Validate unknown options
         if self.options.confirm_every and self.options.confirm_once:
-            print('Cannot have both --confirm_every and --confirm_once')
+            print('--confirm_every and --confirm_once conflict')
             sys.exit(1) 
 
         level = 'warning'
@@ -242,7 +268,8 @@ class ProcessFiles(object):
 
     def _move_current(self):
         '''Move file'''
-        log.debug(('curr_file_move', self.target, join(self.organized_dir, self.new_name)))
+        log.debug(('curr_file_move', self.target, 
+            join(self.organized_dir, self.new_name)))
 
         log.debug('Creating target dir')
         if not self.cmd_line.options.dry_run:
@@ -262,7 +289,8 @@ class ProcessFiles(object):
             except shutil.Error as exc:
                 if 'already exists' in str(exc):
                     if self.cmd_line.options.overwrite:
-                        if filecmp.cmp(self.target, join(self.organized_dir, self.new_name)):
+                        if filecmp.cmp(self.target, 
+                            join(self.organized_dir, self.new_name)):
                             if self.cmd_line.options.delete_dupes:
                                 try:
                                     os.remove(self.target)
@@ -271,7 +299,8 @@ class ProcessFiles(object):
                                     sys.exit()
                         else:
                             log.error((self.target, 'and',
-                                join(self.organized_dir, self.new_name), 'differ'))
+                                join(self.organized_dir, self.new_name), 
+                                'differ'))
                             self._queue_quit()
                     else:
                         log.warn(exc)
@@ -319,7 +348,8 @@ class CompressedMirror(object):
                         self._compress_current(root, curr_file)
                         
     def _compress_current(self, root, curr_file):
-        size = (1600, 1600)
+        size = (self.cmd_line.options.compressed_dimension,
+                self.cmd_line.options.compressed_dimension)
         sliced_root = root[len(self.cmd_line.options.organized_dir)+1:]
         target_path = join(self.compressed_mirror, sliced_root)
         target_file = join(target_path, curr_file)
@@ -330,16 +360,13 @@ class CompressedMirror(object):
         log.debug(('target_file', target_file))
         self._setup_path(target_path)
         log.debug(('source_image', source_image))
-        source_img = Image.open(source_image)
-        target_img = source_img.copy()
-        target_img.thumbnail(size, Image.ANTIALIAS)
-        target_img.save(target_file)
-        #sys.exit()
-
-
-    # TODO: locate/make target folder
-    # TODO: read source image folder and save compressed target
-    
+        try:
+            source_img = Image.open(source_image)
+            target_img = source_img.copy()
+            target_img.thumbnail(size, Image.ANTIALIAS)
+            target_img.save(target_file)
+        except Exception as ex:
+            log.error(('error', target_file, ex))
 
 
 def main():
