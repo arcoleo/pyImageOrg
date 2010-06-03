@@ -11,6 +11,7 @@ import shutil
 import EXIF
 import filecmp
 import logging
+import Image
 
 VALID_GLOB = ('*.JPG', '*.jpg')
 IGNORE_GLOB = ('.*', '_*')
@@ -65,7 +66,9 @@ class CommandLineParameters(object):
         self.parser.add_option('-d', '--dry_run', action='store_true',
             dest='dry_run')
         self.parser.add_option('-r', '--recurse', action='store_true',
-            dest='recurse')
+            dest='recurse', default=True)
+        self.parser.add_option('--no_recurse', action='store_true',
+            dest='no_recurse')
         self.parser.add_option('-l', '--lower_case_ext', action='store_true',
             dest='lower_case_ext')
         self.parser.add_option('-u', '--upper_case_ext', action='store_true',
@@ -82,6 +85,12 @@ class CommandLineParameters(object):
         self.parser.add_option('-e', '--organize_existing', action='store_true',
             dest='organize_existing', help='Organize existing files in ' +\
             'ORGANIZED_DIR according to existing rules')
+        self.parser.add_option('--compressed_mirror', action='store',
+            dest='compressed_mirror', help='Dir to maintain as a mirror of ' +\
+            'organized_dir, but smaller.')
+        self.parser.add_option('--compression_ratio', action='store', 
+            type='int', dest='compression_ratio', 
+            help='percentage of compression ratio')
         self.parser.add_option('-q', '--queue_errors', action='store_true',
             dest='queue_errors', help='Queue errors instead of stopping on them')
         self.parser.add_option('-p', '--delete_dupes', action='store_true',
@@ -92,20 +101,20 @@ class CommandLineParameters(object):
         '''Validate the CL options'''
         
         if not self.options.recurse:
-            log.error('Recurse=False not implemented yet.')
+            print('Recurse=False not implemented yet.')
             sys.exit(1)
         if len(self.args) != 1:
-            log.error(('Invalid number of parameters:', self.args))
+            print(('Invalid number of parameters:', self.args))
             sys.exit(1)
         if self.options.upper_case_ext and self.options.lower_case_ext:
-            log.error('Upper and Lower case are conflicting options.')
+            print('Upper and Lower case are conflicting options.')
             sys.exit(1)
         if (self.options.organized_dir == None) and self.options.organize_existing:
-            log.error('--organize_existing requires --organized_dir')
+            print('--organize_existing requires --organized_dir')
             sys.exit(1)
         if self.options.confirm_every and self.options.confirm_once:
-            log.error('Cannot have both --confirm_every and --confirm_once')
-            sys.exit(1)
+            print('Cannot have both --confirm_every and --confirm_once')
+            sys.exit(1) 
 
         level = 'warning'
         if self.options.verbose:
@@ -267,13 +276,60 @@ class ProcessFiles(object):
             except Exception as exc:
                 log.error(('move failed', exc))
                 self._queue_quit()
+                
+class CompressedMirror(object):
+    '''Maintain a compressed mirror for easily uploading'''
+    
+    def __init__(self, cmd_line):
+        self.cmd_line = cmd_line
+        self.compressed_mirror = self.cmd_line.options.compressed_mirror
+        self._setup_path()
+    
+    def _setup_path(self):
+        try:
+            os.makedirs(self.compressed_mirror)
+        except Exception as ex:
+            log.critical('Cannot make compressed mirror target: %s' % ex)
+            sys.exit()
+    
+    def _walk(self):
+        '''Walk the path'''
+        
+        for root, dirs, files in os.walk(self.cmd_line.options.organized_dir):
+            consume = sum(getsize(join(root, name)) \
+                for name in files) / (2 ** 20)
+            log.info(root + 'consumes' + str(consume) + 'M in' +
+                str(len(files)) + 'non-directory files')
+            for curr_file in files:
+                if self.cmd_line.options.verbose:
+                    log.debug(('curr_file', curr_file))
+                skip = False
+                for match in IGNORE_GLOB:
+                    if fnmatch.fnmatch(curr_file, match):
+                        skip = True
+                if skip:
+                    log.debug('skipping')
+                    continue
+                for match in VALID_GLOB:
+                    if fnmatch.fnmatch(curr_file, match):
+                        self._compress_current(join(root, curr_file))
+                        
+    def _compress_current(self, root, curr_file):
+        log.debug(('root', root))
+        log.debug(('curr_file', curr_file))
+
+
+    # TODO: locate/make target folder
+    # TODO: read source image folder and save compressed target
+    
 
 
 def main():
     '''Run everything'''
 
     cmd_line = CommandLineParameters()
-    ProcessFiles(cmd_line)
+    #ProcessFiles(cmd_line)
+    CompressedMirror(cmd_line)
 
 
 if __name__ == "__main__":
