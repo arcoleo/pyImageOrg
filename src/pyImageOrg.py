@@ -4,7 +4,7 @@
 
 import sys
 import os
-from os.path import join, getsize, basename, dirname
+from os.path import join, getsize, basename, dirname, exists
 from optparse import OptionParser
 import fnmatch
 import shutil
@@ -96,6 +96,7 @@ class CommandLineParameters(object):
             'organized_dir, but smaller.')
         self.parser.add_option('--compressed_dimension', action='store', 
             type='int', dest='compressed_dimension', 
+            default=1600,
             help='Square dimension of compression.  800 for example ' +\
                 'compresses to 800x800')
         
@@ -135,7 +136,7 @@ class CommandLineParameters(object):
             sys.exit(1)
 
         # Validate mirroring options
-        if self.options.compressed_dimension < 1:
+        if self.options.compressed_dimension and (self.options.compressed_dimension < 1):
             print('Invalid compressed dimension')
             sys.exit(1)
 
@@ -252,19 +253,21 @@ class ProcessFiles(object):
             self.folder = dirname(curr_file)
             self.target = join(self.folder, self.new_name)
             log.debug(('process_current', curr_file, self.target))
-            if not self.cmd_line.options.dry_run:
-                try:
-                    os.rename(curr_file, self.target)
-                except Exception, ex:
-                    log.error(('Rename Failed', ex))
-                    if not self.cmd_line.options.queue_errors:
-                        sys.exit(1)
-                    else:
-                        raise
+            self._process_current_do(curr_file)
             self._move_current()
         except Exception, ex:
             log.error(('Skipped rename', self.target, ex))
-
+            
+    def _process_current_do(self, curr_file):
+        if not self.cmd_line.options.dry_run:
+            try:
+                os.rename(curr_file, self.target)
+            except Exception, ex:
+                log.error(('Rename Failed', ex))
+                if not self.cmd_line.options.queue_errors:
+                    sys.exit(1)
+                else:
+                    raise
 
     def _move_current(self):
         '''Move file'''
@@ -282,7 +285,6 @@ class ProcessFiles(object):
                     log.critical(('makedirs failed', errno, ex))
                     sys.exit(2)
 
-        log.debug('Moving file')
         if not self.cmd_line.options.dry_run:
             try:
                 shutil.move(self.target, self.organized_dir)
@@ -307,6 +309,8 @@ class ProcessFiles(object):
             except Exception as exc:
                 log.error(('move failed', exc))
                 self._queue_quit()
+            else:
+                log.debug('Moved %s to %s' % (self.target, join(self.organized_dir, self.new_name)))
                 
 class CompressedMirror(object):
     '''Maintain a compressed mirror for easily uploading'''
@@ -315,6 +319,8 @@ class CompressedMirror(object):
         self.cmd_line = cmd_line
         self.compressed_mirror = self.cmd_line.options.compressed_mirror
         self._setup_path(self.compressed_mirror)
+        self.size = (self.cmd_line.options.compressed_dimension,
+                self.cmd_line.options.compressed_dimension)
         self._walk()
     
     def _setup_path(self, path):
@@ -348,34 +354,46 @@ class CompressedMirror(object):
                         self._compress_current(root, curr_file)
                         
     def _compress_current(self, root, curr_file):
-        size = (self.cmd_line.options.compressed_dimension,
-                self.cmd_line.options.compressed_dimension)
         postfix = '--%sx.jpg' % self.cmd_line.options.compressed_dimension
         sliced_root = root[len(self.cmd_line.options.organized_dir)+1:]
         target_path = join(self.compressed_mirror, sliced_root)
         target_file = join(target_path, curr_file[:-4] + postfix)
         source_image = join(root, curr_file)
-        log.debug(('root', sliced_root))
-        log.debug(('target_path', target_path))
-        log.debug(('curr_file', curr_file))
-        log.debug(('target_file', target_file))
+        #log.debug(('root', sliced_root))
+        #log.debug(('target_path', target_path))
+        #log.debug(('curr_file', curr_file))
+        #log.debug(('target_file', target_file))
         self._setup_path(target_path)
-        log.debug(('source_image', source_image))
+        if exists(target_file):
+            if self.cmd_line.options.overwrite:
+                log.debug('Overwriting: %s'  % target_file)
+                self._write_file(source_image, target_file)
+            else:
+                log.debug('Not overwriting: %s' % target_file)
+        else:
+            log.debug('Writing: %s' % target_file)
+            self._write_file(source_image, target_file)
+        #log.debug(('source_image', source_image))
+            
+    def _write_file(self, source_image, target_file):
+        if self.cmd_line.options.dry_run:
+            return
         try:
             source_img = Image.open(source_image)
             target_img = source_img.copy()
-            target_img.thumbnail(size, Image.ANTIALIAS)
+            target_img.thumbnail(self.size, Image.ANTIALIAS)
             target_img.save(target_file)
         except Exception as ex:
             log.error(('error', target_file, ex))
-
+        
 
 def main():
     '''Run everything'''
 
     cmd_line = CommandLineParameters()
-    #ProcessFiles(cmd_line)
-    CompressedMirror(cmd_line)
+    ProcessFiles(cmd_line)
+    if cmd_line.options.compressed_mirror:
+        CompressedMirror(cmd_line)
 
 
 if __name__ == "__main__":
