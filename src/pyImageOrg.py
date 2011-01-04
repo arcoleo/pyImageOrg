@@ -195,16 +195,22 @@ class ProcessFiles(object):
 
 
     def _get_extension(self, curr_file):
-        '''Get/convert current file extention'''
-        
-        extension = '.' + curr_file.rsplit('.', 1)[1]
+        '''Get/convert current file extension'''
+        try:
+            name, extension = curr_file.rsplit('.', 1)
+        except ValueError, ex:
+            log.error('No Extension')
+            return ''
+        except Exception, ex:
+            log.error(('Unknown Error', ex))
+        extension = '.' + extension
         if self.cmd_line.options.lower_case_ext:
             extension = extension.lower()
         return extension
 
     def _extract_tags(self, tags):
         return tags
-        
+
     def _format_filename(self, curr_file, tags):
         '''Format time'''
 
