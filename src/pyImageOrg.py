@@ -17,7 +17,7 @@ import Image
 
 VALID_GLOB = ('*.JPG', '*.jpg')
 IGNORE_GLOB = ('.*', '_*')
-RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s-%(MakerNoteTotalShutterReleases)s"
+RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s%(MakerNoteTotalShutterReleases)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
 
  
@@ -75,9 +75,9 @@ class CommandLineParameters(object):
         self.parser.add_option('-o', '--overwrite', action='store_true',
             dest='overwrite')
         self.parser.add_option('-q', '--queue_errors', action='store_true',
-            dest='queue_errors', default=True
+            dest='queue_errors', default=True,
             help='Queue errors instead of stopping on them')
-                        
+
         # Organizing options
         self.parser.add_option('-l', '--lower_case_ext', action='store_true',
             dest='lower_case_ext', default=True)
@@ -211,25 +211,28 @@ class ProcessFiles(object):
     def _extract_tags(self, tags):
         return tags
 
-    def _get_MakeNoteTotalShutterReleases(self, curr_file):
+    def _get_MakerNoteTotalShutterReleases(self, curr_file, tags):
         try:
-            mtsr = tags.get('MakerNote TotalShutterReleases').values
+            mtsr = tags.get('MakerNote TotalShutterReleases').values[0]
         except AttributeError, ex:
             log.error(('Attribute error', ex, curr_file))
             if not self.cmd_line.options.queue_errors:
                 sys.exit(1)
+            return ''
         except Exception, ex:
             log.error(('Error', ex, curr_file))
             if not self.cmd_line.options.queue_errors:
                 sys.exit(1)
             else:
                 raise
+        return '-%d' % mtsr
 
     def _format_filename(self, curr_file, tags):
         '''Format time'''
 
-        for (k, v) in tags.iteritems():
-                print (k, v)
+#        for (k, v) in tags.iteritems():
+#            if ('MakerNote' in k) and ('Shutter' in k):
+#                print (k, v)
 
         try:
             self.dto_str = tags.get('EXIF DateTimeOriginal').values
@@ -246,14 +249,14 @@ class ProcessFiles(object):
                 sys.exit(1)
             else:
                 raise
-        self.mtsr = self._get_MakerNoteTotalShutterReleases()
 
+        self.dto['MakerNoteTotalShutterReleases'] = self._get_MakerNoteTotalShutterReleases(curr_file, tags)
         self.dto['date'], self.dto['time'] = self.dto_str.split(' ')
         self.dto['YYYY'], self.dto['MM'], self.dto['DD'] = \
             self.dto['date'].split(':')
         self.dto['HH'], self.dto['mm'], self.dto['SS'] = \
             self.dto['time'].split(':')
-        self.dto['SST'] = self.sst_str
+        #self.dto['SST'] = self.sst_str
         self.new_name = RENAME_FORMAT % self.dto
         self.new_name = self.new_name + self._get_extension(curr_file)
 
