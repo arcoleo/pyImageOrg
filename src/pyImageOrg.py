@@ -17,7 +17,7 @@ import Image
 
 VALID_GLOB = ('*.JPG', '*.jpg')
 IGNORE_GLOB = ('.*', '_*')
-RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s"
+RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s-%(MakerNoteTotalShutterReleases)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
 
  
@@ -65,7 +65,7 @@ class CommandLineParameters(object):
         
         # Universal options
         self.parser.add_option('-v', '--verbose', action='store_true',
-            dest='verbose')        
+            dest='verbose')
         self.parser.add_option('-d', '--dry_run', action='store_true',
             dest='dry_run')
         self.parser.add_option('-r', '--recurse', action='store_true',
@@ -75,12 +75,12 @@ class CommandLineParameters(object):
         self.parser.add_option('-o', '--overwrite', action='store_true',
             dest='overwrite')
         self.parser.add_option('-q', '--queue_errors', action='store_true',
-            dest='queue_errors', 
+            dest='queue_errors', default=True
             help='Queue errors instead of stopping on them')
                         
         # Organizing options
         self.parser.add_option('-l', '--lower_case_ext', action='store_true',
-            dest='lower_case_ext')
+            dest='lower_case_ext', default=True)
         self.parser.add_option('-u', '--upper_case_ext', action='store_true',
             dest='upper_case_ext')
         self.parser.add_option('-z', '--organized_dir', action='store',
@@ -124,7 +124,7 @@ class CommandLineParameters(object):
         if self.options.recurse and self.options.no_recurse:
             print('--recurse and --no_recurse are conflicting options.')
             sys.exit(1)
-            
+
         # Validate organizing options
         if self.options.upper_case_ext and self.options.lower_case_ext:
             print('Upper and Lower case are conflicting options.')
@@ -211,8 +211,25 @@ class ProcessFiles(object):
     def _extract_tags(self, tags):
         return tags
 
+    def _get_MakeNoteTotalShutterReleases(self, curr_file):
+        try:
+            mtsr = tags.get('MakerNote TotalShutterReleases').values
+        except AttributeError, ex:
+            log.error(('Attribute error', ex, curr_file))
+            if not self.cmd_line.options.queue_errors:
+                sys.exit(1)
+        except Exception, ex:
+            log.error(('Error', ex, curr_file))
+            if not self.cmd_line.options.queue_errors:
+                sys.exit(1)
+            else:
+                raise
+
     def _format_filename(self, curr_file, tags):
         '''Format time'''
+
+        for (k, v) in tags.iteritems():
+                print (k, v)
 
         try:
             self.dto_str = tags.get('EXIF DateTimeOriginal').values
@@ -229,12 +246,14 @@ class ProcessFiles(object):
                 sys.exit(1)
             else:
                 raise
-            
+        self.mtsr = self._get_MakerNoteTotalShutterReleases()
+
         self.dto['date'], self.dto['time'] = self.dto_str.split(' ')
         self.dto['YYYY'], self.dto['MM'], self.dto['DD'] = \
             self.dto['date'].split(':')
         self.dto['HH'], self.dto['mm'], self.dto['SS'] = \
             self.dto['time'].split(':')
+        self.dto['SST'] = self.sst_str
         self.new_name = RENAME_FORMAT % self.dto
         self.new_name = self.new_name + self._get_extension(curr_file)
 
