@@ -10,6 +10,7 @@ import fnmatch
 import shutil
 from errno import EEXIST
 import logging
+import ConfigParser
 import filecmp
 import EXIF
 import Image
@@ -20,7 +21,7 @@ IGNORE_GLOB = ('.*', '_*')
 RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s%(MakerNoteTotalShutterReleases)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
 
- 
+
 def init_logging(level='debug', log_file='', log_dir='.'):
     '''Initialize logging'''
 
@@ -57,12 +58,18 @@ class CommandLineParameters(object):
         self.parser = OptionParser(self.usage)
         self.options = None
         self.args = None
+        self.skip_processfiles = False
         self._add_options()
         self._validate_options()
 
+
     def _add_options(self):
         '''Add CL options'''
-        
+
+        # read rc file
+        self.parser.add_option('--rc', action='store',
+           dest='rcfile', help='Location of rc file to read options from')
+
         # Universal options
         self.parser.add_option('-v', '--verbose', action='store_true',
             dest='verbose')
@@ -86,20 +93,21 @@ class CommandLineParameters(object):
         self.parser.add_option('-z', '--organized_dir', action='store',
             dest='organized_dir', help='Dir to copy all renamed files into,'+\
             ' organized', default='')
-        self.parser.add_option('-e', '--organize_existing', action='store_true',
+        self.parser.add_option('-e', '--organize_existing',
+            action='store_true',
             dest='organize_existing', help='Organize existing files in ' +\
             'ORGANIZED_DIR according to existing rules')
-                
+
         # Mirroring options
         self.parser.add_option('--compressed_mirror', action='store',
-            dest='compressed_mirror', help='Dir to maintain as a mirror of ' +\
-            'organized_dir, but smaller.')
-        self.parser.add_option('--compressed_dimension', action='store', 
-            type='int', dest='compressed_dimension', 
+            dest='compressed_mirror', help='Dir to maintain as a mirror' +\
+            ' of organized_dir, but smaller.')
+        self.parser.add_option('--compressed_dimension', action='store',
+            type='int', dest='compressed_dimension',
             default=1600,
             help='Square dimension of compression.  800 for example ' +\
                 'compresses to 800x800')
-        
+
         # Unknown options
         self.parser.add_option('-c', '--confirm_every', action='store_true',
             dest='confirm_every', help='Confirm every action')
@@ -111,11 +119,18 @@ class CommandLineParameters(object):
 
     def _validate_options(self):
         '''Validate the CL options'''
-        
+
         # Validate required parameters
         if len(self.args) != 1:
-            print(('Invalid number of parameters:', self.args))
-            sys.exit(1)
+            # some options don't need the base parameter
+            if self.options.compressed_mirror:
+                self.skip_processfiles = True
+                print 'Skipping Processed Files'
+            else:
+                print 'Not Skipping Processed Files'
+            if not self.skip_processfiles:
+                print(('Invalid number of parameters:', self.args))
+                sys.exit(1)
 
         # Validate universal options
         if not self.options.recurse or self.options.no_recurse:
@@ -136,14 +151,15 @@ class CommandLineParameters(object):
             sys.exit(1)
 
         # Validate mirroring options
-        if self.options.compressed_dimension and (self.options.compressed_dimension < 1):
+        if self.options.compressed_dimension and \
+            (self.options.compressed_dimension < 1):
             print('Invalid compressed dimension')
             sys.exit(1)
 
         # Validate unknown options
         if self.options.confirm_every and self.options.confirm_once:
             print('--confirm_every and --confirm_once conflict')
-            sys.exit(1) 
+            sys.exit(1)
 
         level = 'warning'
         if self.options.verbose:
@@ -160,7 +176,7 @@ class OrganizeFiles(object):
 
 class ProcessFiles(object):
     '''Process image files'''
-    
+
     def __init__(self, cmd_line):
         log.debug('Processing Files')
         self.cmd_line = cmd_line
@@ -173,7 +189,7 @@ class ProcessFiles(object):
 
     def _walk(self):
         '''Walk the path'''
-        
+
         for root, dirs, files in os.walk(self.cmd_line.args[0]):
             consume = sum(getsize(join(root, name)) \
                 for name in files) / (2 ** 20)
@@ -285,7 +301,7 @@ class ProcessFiles(object):
             self._move_current()
         except Exception, ex:
             log.error(('Skipped rename', self.target, ex))
-            
+
     def _process_current_do(self, curr_file):
         if not self.cmd_line.options.dry_run:
             try:
@@ -299,7 +315,7 @@ class ProcessFiles(object):
 
     def _move_current(self):
         '''Move file'''
-        log.debug(('curr_file_move', self.target, 
+        log.debug(('curr_file_move', self.target,
             join(self.organized_dir, self.new_name)))
 
         log.debug('Creating target dir')
@@ -319,7 +335,7 @@ class ProcessFiles(object):
             except shutil.Error as exc:
                 if 'already exists' in str(exc):
                     if self.cmd_line.options.overwrite:
-                        if filecmp.cmp(self.target, 
+                        if filecmp.cmp(self.target,
                             join(self.organized_dir, self.new_name)):
                             if self.cmd_line.options.delete_dupes:
                                 try:
@@ -329,7 +345,7 @@ class ProcessFiles(object):
                                     sys.exit()
                         else:
                             log.error((self.target, 'and',
-                                join(self.organized_dir, self.new_name), 
+                                join(self.organized_dir, self.new_name),
                                 'differ'))
                             self._queue_quit()
                     else:
@@ -339,29 +355,33 @@ class ProcessFiles(object):
                 self._queue_quit()
             else:
                 log.debug('Moved %s to %s' % (self.target, join(self.organized_dir, self.new_name)))
-                
+
 class CompressedMirror(object):
     '''Maintain a compressed mirror for easily uploading'''
-    
+
     def __init__(self, cmd_line):
         self.cmd_line = cmd_line
         self.compressed_mirror = self.cmd_line.options.compressed_mirror
         self._setup_path(self.compressed_mirror)
         self.size = (self.cmd_line.options.compressed_dimension,
                 self.cmd_line.options.compressed_dimension)
+        log.debug('size: ' + str(self.size))
         self._walk()
-    
+
     def _setup_path(self, path):
+        log.debug('begin')
         try:
             os.makedirs(path)
         except Exception as ex:
             if not ex.errno == EEXIST:
                 log.critical('Cannot make compressed mirror target: %s' % ex)
                 sys.exit()
-    
+        log.debug('end')
+
     def _walk(self):
         '''Walk the path'''
-        
+        log.debug('begin')
+        log.debug('organized_dir:' + self.cmd_line.options.organized_dir)
         for root, dirs, files in os.walk(self.cmd_line.options.organized_dir):
             consume = sum(getsize(join(root, name)) \
                 for name in files) / (2 ** 20)
@@ -380,7 +400,7 @@ class CompressedMirror(object):
                 for match in VALID_GLOB:
                     if fnmatch.fnmatch(curr_file, match):
                         self._compress_current(root, curr_file)
-                        
+
     def _compress_current(self, root, curr_file):
         postfix = '--%sx.jpg' % self.cmd_line.options.compressed_dimension
         sliced_root = root[len(self.cmd_line.options.organized_dir)+1:]
@@ -402,7 +422,7 @@ class CompressedMirror(object):
             log.debug('Writing: %s' % target_file)
             self._write_file(source_image, target_file)
         #log.debug(('source_image', source_image))
-            
+
     def _write_file(self, source_image, target_file):
         if self.cmd_line.options.dry_run:
             return
@@ -413,14 +433,16 @@ class CompressedMirror(object):
             target_img.save(target_file)
         except Exception as ex:
             log.error(('error', target_file, ex))
-        
+
 
 def main():
     '''Run everything'''
 
     cmd_line = CommandLineParameters()
-    ProcessFiles(cmd_line)
+    if not cmd_line.skip_processfiles:
+        ProcessFiles(cmd_line)
     if cmd_line.options.compressed_mirror:
+        print 'Compress Mirror'
         CompressedMirror(cmd_line)
 
 
