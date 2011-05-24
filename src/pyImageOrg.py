@@ -12,14 +12,24 @@ from errno import EEXIST
 import logging
 import ConfigParser
 import filecmp
+import pprint
 import EXIF
 import Image
 
+from threading import Thread
+from Queue import Queue
+import time, random
+
+num_fetch_threads = 1
+enclosure_queue = Queue()
 
 VALID_GLOB = ('*.JPG', '*.jpg')
 IGNORE_GLOB = ('.*', '_*')
 RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s%(MakerNoteTotalShutterReleases)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
+task_queue = []
+
+
 
 
 def init_logging(level='debug', log_file='', log_dir='.'):
@@ -109,6 +119,8 @@ class CommandLineParameters(object):
                 'compresses to 800x800')
 
         # Unknown options
+        self.parser.add_option('-t', '--threads', action='store',
+           dest='threads', type='int', default=1, help='Enable threading')
         self.parser.add_option('-c', '--confirm_every', action='store_true',
             dest='confirm_every', help='Confirm every action')
         self.parser.add_option('--confirm_once', action='store_true',
@@ -313,6 +325,9 @@ class ProcessFiles(object):
                 else:
                     raise
 
+    def _worker(self):
+        pass
+
     def _move_current(self):
         '''Move file'''
         log.debug(('curr_file_move', self.target,
@@ -366,7 +381,17 @@ class CompressedMirror(object):
         self.size = (self.cmd_line.options.compressed_dimension,
                 self.cmd_line.options.compressed_dimension)
         log.debug('size: ' + str(self.size))
+        if self.cmd_line.options.threads:
+            self._init_threaded()
         self._walk()
+
+    def _init_threaded(self):
+        # Set up some threads to fetch the enclosures
+        for i in range(self.cmd_line.options.threads):
+            worker = Thread(target=self._downloadEnclosures, args=(i, enclosure_queue,))
+            worker.setDaemon(True)
+            worker.start()
+
 
     def _setup_path(self, path):
         log.debug('begin')
@@ -400,6 +425,27 @@ class CompressedMirror(object):
                 for match in VALID_GLOB:
                     if fnmatch.fnmatch(curr_file, match):
                         self._compress_current(root, curr_file)
+        if self.cmd_line.options.threads:
+            print '*** Main thread waiting'
+            enclosure_queue.join()
+            print '*** Done'
+
+
+    def _downloadEnclosures(self, i, q):
+        """This is the worker thread function.
+        It processes items in the queue one after
+        another.  These daemon threads go into an
+        infinite loop, and only exit when
+        the main thread ends.
+        """
+        while True:
+            #log.debug('%s: Looking for the next enclosure. ' % i)
+            source, target = q.get()
+            # instead of really downloading the URL,
+            # we just pretend and sleep
+            log.debug('_write_file(%s, %s)' % (source, target))
+            self._write_file(source, target)
+            q.task_done()
 
     def _compress_current(self, root, curr_file):
         postfix = '--%sx.jpg' % self.cmd_line.options.compressed_dimension
@@ -407,6 +453,7 @@ class CompressedMirror(object):
         target_path = join(self.compressed_mirror, sliced_root)
         target_file = join(target_path, curr_file[:-4] + postfix)
         source_image = join(root, curr_file)
+
         #log.debug(('root', sliced_root))
         #log.debug(('target_path', target_path))
         #log.debug(('curr_file', curr_file))
@@ -420,7 +467,10 @@ class CompressedMirror(object):
                 log.debug('Not overwriting: %s' % target_file)
         else:
             log.debug('Writing: %s' % target_file)
-            self._write_file(source_image, target_file)
+            if self.cmd_line.options.threads:
+                enclosure_queue.put((source_image, target_file))
+            else:
+                self._write_file(source_image, target_file)
         #log.debug(('source_image', source_image))
 
     def _write_file(self, source_image, target_file):
@@ -438,6 +488,27 @@ class CompressedMirror(object):
 def main():
     '''Run everything'''
 
+    # Set up some threads to fetch the enclosures
+    #for i in range(num_fetch_threads):
+    #    worker = Thread(target=downloadEnclosures, args=(i, enclosure_queue,))
+    #    worker.setDaemon(True)
+    #    worker.start()
+
+    # Download the feed(s) and put the enclosure URLs into
+    # the queue.
+    #for url in range(10):
+    #    for entry in range(10):
+    #        item = '%d-%d' % (url, entry)
+    #        print 'Queuing:', item
+    #        enclosure_queue.put(item)
+
+    # Now wait for the queue to be empty, indicating that we have
+    # processed all of the downloads.
+    #print '*** Main thread waiting'
+    #enclosure_queue.join()
+    #print '*** Done'
+    #sys.exit()
+
     cmd_line = CommandLineParameters()
     if not cmd_line.skip_processfiles:
         ProcessFiles(cmd_line)
@@ -448,3 +519,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    pprint.pprint(task_queue)
