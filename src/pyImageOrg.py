@@ -16,7 +16,7 @@ import EXIF
 import Image
 
 
-VALID_GLOB = ('*.JPG', '*.jpg')
+VALID_GLOB = ('*.JPG', '*.jpg', '*.nef', '*.NEF')
 IGNORE_GLOB = ('.*', '_*')
 RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s%(MakerNoteTotalShutterReleases)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
