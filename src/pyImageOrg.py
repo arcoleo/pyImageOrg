@@ -97,7 +97,7 @@ class CommandLineParameters(object):
         self.parser.add_argument('--compressed-mirror', action='store',
             help='Dir to maintain as a mirror of organized_dir, but smaller.')
         self.parser.add_argument('--compressed-dimension', action='store',
-            type='int', default=1600,
+            type=int, default=1600,
             help='Square dimension of compression.  800 for example compresses to 800x800')
 
         # Unknown options
