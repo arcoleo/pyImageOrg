@@ -5,7 +5,8 @@
 import sys
 import os
 from os.path import join, getsize, basename, dirname, exists
-from optparse import OptionParser
+#from optparse import OptionParser
+import argparse
 import fnmatch
 import shutil
 from errno import EEXIST
@@ -15,8 +16,9 @@ import filecmp
 import EXIF
 import Image
 
+foobar = None
 
-VALID_GLOB = ('*.JPG', '*.jpg', '*.nef', '*.NEF')
+VALID_GLOB = ('*.JPG', '*.jpg', '*.nef', '*.NEF', '*.dng', '*.DNG')
 IGNORE_GLOB = ('.*', '_*')
 RENAME_FORMAT = "%(YYYY)s%(MM)s%(DD)s-%(HH)s%(mm)s%(SS)s%(MakerNoteTotalShutterReleases)s"
 ORGANIZED_DIR_FORMAT = "%(YYYY)s/%(MM)s/%(DD)s"
@@ -39,7 +41,7 @@ def init_logging(level='debug', log_file='', log_dir='.'):
     log_str_lite = '[%(levelname)s] [%(funcName)s:%(lineno)d] %(message)s'
 
     try:
-        logging.basicConfig(level=LOGGING_LEVELS[level], #logging.DEBUG,
+        logging.basicConfig(level=LOGGING_LEVELS[level],  # logging.DEBUG,
             format=log_str_lite,
             datefmt='%a %b %d %H:%M:%S %Y',
             #filename=os.path.join(log_dir, log_file),
@@ -54,68 +56,55 @@ class CommandLineParameters(object):
     '''Parse Command Line Options'''
 
     def __init__(self):
-        self.usage = "./pyImageOrg [options] <SOURCE_DIR>"
-        self.parser = OptionParser(self.usage)
+        self.parser = argparse.ArgumentParser(description='Process some images.')
         self.options = None
         self.args = None
         self.skip_processfiles = False
         self._add_options()
         self._validate_options()
 
-
     def _add_options(self):
         '''Add CL options'''
 
         # read rc file
-        self.parser.add_option('--rc', action='store',
+        self.parser.add_argument('--rc', action='store',
            dest='rcfile', help='Location of rc file to read options from')
 
         # Universal options
-        self.parser.add_option('-v', '--verbose', action='store_true',
-            dest='verbose')
-        self.parser.add_option('-d', '--dry_run', action='store_true',
-            dest='dry_run')
-        self.parser.add_option('-r', '--recurse', action='store_true',
-            dest='recurse', default=True)
-        self.parser.add_option('--no_recurse', action='store_true',
-            dest='no_recurse')
-        self.parser.add_option('-o', '--overwrite', action='store_true',
-            dest='overwrite')
-        self.parser.add_option('-q', '--queue_errors', action='store_true',
-            dest='queue_errors', default=True,
-            help='Queue errors instead of stopping on them')
+        self.parser.add_argument('-v', '--verbose', action='store_true', dest='verbose')
+        self.parser.add_argument('-d', '--dry-run', action='store_true')
+
+        recurse_group = self.parser.add_mutually_exclusive_group()
+        recurse_group.add_argument('-r', '--recurse', action='store_true', default=True)
+        recurse_group.add_argument('--no-recurse', action='store_false')
+        
+        self.parser.add_argument('-o', '--overwrite', action='store_true')
+        self.parser.add_argument('-q', '--queue-errors', action='store_true',
+            default=True, help='Queue errors instead of stopping on them')
 
         # Organizing options
-        self.parser.add_option('-l', '--lower_case_ext', action='store_true',
-            dest='lower_case_ext', default=True)
-        self.parser.add_option('-u', '--upper_case_ext', action='store_true',
-            dest='upper_case_ext')
-        self.parser.add_option('-z', '--organized_dir', action='store',
-            dest='organized_dir', help='Dir to copy all renamed files into,'+\
-            ' organized', default='')
-        self.parser.add_option('-e', '--organize_existing',
+        case_group = self.parser.add_mutually_exclusive_group()
+        case_group.add_argument('-l', '--lower-case-ext', action='store_true', default=True)
+        case_group.add_argument('-u', '--upper-case-ext', action='store_true')
+        
+        self.parser.add_argument('-z', '--organized-dir', action='store',
+            help='Dir to copy all renamed files into, organized', default='')
+        self.parser.add_argument('-e', '--organize-existing',
             action='store_true',
-            dest='organize_existing', help='Organize existing files in ' +\
-            'ORGANIZED_DIR according to existing rules')
+            help='Organize existing files in ORGANIZED_DIR according to existing rules')
 
         # Mirroring options
-        self.parser.add_option('--compressed_mirror', action='store',
-            dest='compressed_mirror', help='Dir to maintain as a mirror' +\
-            ' of organized_dir, but smaller.')
-        self.parser.add_option('--compressed_dimension', action='store',
-            type='int', dest='compressed_dimension',
-            default=1600,
-            help='Square dimension of compression.  800 for example ' +\
-                'compresses to 800x800')
+        self.parser.add_argument('--compressed-mirror', action='store',
+            help='Dir to maintain as a mirror of organized_dir, but smaller.')
+        self.parser.add_argument('--compressed-dimension', action='store',
+            type='int', default=1600,
+            help='Square dimension of compression.  800 for example compresses to 800x800')
 
         # Unknown options
-        self.parser.add_option('-c', '--confirm_every', action='store_true',
-            dest='confirm_every', help='Confirm every action')
-        self.parser.add_option('--confirm_once', action='store_true',
-            dest='confirm_once', help='Confirm all renames once')
-        self.parser.add_option('-p', '--delete_dupes', action='store_true',
-            dest='delete_dupes', help='delete duplicates (source)')
-        (self.options, self.args) = self.parser.parse_args()
+        self.parser.add_argument('-c', '--confirm-every', action='store_true', help='Confirm every action')
+        self.parser.add_argument('--confirm-once', action='store_true', help='Confirm all renames once')
+        self.parser.add_argument('-p', '--delete-dupes', action='store_true', help='delete duplicates (source)')
+        self.options, self.args = self.parser.parse_args()
 
     def _validate_options(self):
         '''Validate the CL options'''
