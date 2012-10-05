@@ -100,6 +100,10 @@ class CommandLineParameters(object):
             type=int, default=1600,
             help='Square dimension of compression.  800 for example compresses to 800x800')
 
+        # EXIF tags
+        self.parser.add_argument('--exif-dimension', action='store', type=int,
+            help='Store long side of image dimension in EXIF')
+            
         # Unknown options
         self.parser.add_argument('-c', '--confirm-every', action='store_true', help='Confirm every action')
         self.parser.add_argument('--confirm-once', action='store_true', help='Confirm all renames once')
