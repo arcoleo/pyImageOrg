@@ -15,6 +15,7 @@ import ConfigParser
 import filecmp
 import EXIF
 import Image
+from pprint import pprint
 
 foobar = None
 
@@ -76,7 +77,7 @@ class CommandLineParameters(object):
 
         recurse_group = self.parser.add_mutually_exclusive_group()
         recurse_group.add_argument('-r', '--recurse', action='store_true', default=True)
-        recurse_group.add_argument('--no-recurse', action='store_false')
+        recurse_group.add_argument('--no-recurse', action='store_true', default=False)
         
         self.parser.add_argument('-o', '--overwrite', action='store_true')
         self.parser.add_argument('-q', '--queue-errors', action='store_true',
@@ -103,20 +104,22 @@ class CommandLineParameters(object):
         # EXIF tags
         self.parser.add_argument('--exif-dimension', action='store', type=int,
             help='Store long side of image dimension in EXIF')
-            
         # Unknown options
         self.parser.add_argument('-c', '--confirm-every', action='store_true', help='Confirm every action')
         self.parser.add_argument('--confirm-once', action='store_true', help='Confirm all renames once')
         self.parser.add_argument('-p', '--delete-dupes', action='store_true', help='delete duplicates (source)')
-        self.options, self.args = self.parser.parse_args()
+        
+        self.parser.add_argument('source_folder', nargs='?')
+        self.args = vars(self.parser.parse_args())
+
 
     def _validate_options(self):
         '''Validate the CL options'''
 
         # Validate required parameters
-        if len(self.args) != 1:
+        if self.args.get('source_folder') is None:
             # some options don't need the base parameter
-            if self.options.compressed_mirror:
+            if self.args.get('compressed_mirror'):
                 self.skip_processfiles = True
                 print 'Skipping Processed Files'
             else:
@@ -126,36 +129,34 @@ class CommandLineParameters(object):
                 sys.exit(1)
 
         # Validate universal options
-        if not self.options.recurse or self.options.no_recurse:
+        if (not self.args.get('recurse')) or self.args.get('no_recurse'):
             print('Recurse=False not implemented yet.')
-            sys.exit(1)
-        if self.options.recurse and self.options.no_recurse:
-            print('--recurse and --no_recurse are conflicting options.')
+            pprint(self.args)
             sys.exit(1)
 
         # Validate organizing options
-        if self.options.upper_case_ext and self.options.lower_case_ext:
+        if self.args.get('upper_case_ext') and self.args.get('lower_case_ext'):
             print('Upper and Lower case are conflicting options.')
             sys.exit(1)
 
-        if (self.options.organized_dir == None) and \
-            self.options.organize_existing:
+        if (self.args.get('organized_dir') is None) and \
+            self.args.get('organize_existing'):
             print('--organize_existing requires --organized_dir')
             sys.exit(1)
 
         # Validate mirroring options
-        if self.options.compressed_dimension and \
-            (self.options.compressed_dimension < 1):
+        if self.args.get('compressed_dimension') and \
+            (self.args.get('compressed_dimension') < 1):
             print('Invalid compressed dimension')
             sys.exit(1)
 
         # Validate unknown options
-        if self.options.confirm_every and self.options.confirm_once:
+        if self.args.get('confirm_every') and self.args.get('confirm_once'):
             print('--confirm_every and --confirm_once conflict')
             sys.exit(1)
 
         level = 'warning'
-        if self.options.verbose:
+        if self.args.get('verbose'):
             level = 'debug'
         init_logging(level=level)
 
@@ -183,13 +184,13 @@ class ProcessFiles(object):
     def _walk(self):
         '''Walk the path'''
 
-        for root, dirs, files in os.walk(self.cmd_line.args[0]):
+        for root, dirs, files in os.walk(self.cmd_line.args.get('source_folder')):
             consume = sum(getsize(join(root, name)) \
                 for name in files) / (2 ** 20)
             log.info(root + 'consumes' + str(consume) + 'M in' +
                 str(len(files)) + 'non-directory files')
             for curr_file in files:
-                if self.cmd_line.options.verbose:
+                if self.cmd_line.args.get('verbose'):
                     log.debug(('curr_file', curr_file))
                 skip = False
                 for match in IGNORE_GLOB:
@@ -213,7 +214,7 @@ class ProcessFiles(object):
         except Exception, ex:
             log.error(('Unknown Error', ex))
         extension = '.' + extension
-        if self.cmd_line.options.lower_case_ext:
+        if self.cmd_line.args.get('lower_case_ext'):
             extension = extension.lower()
         return extension
 
@@ -225,12 +226,12 @@ class ProcessFiles(object):
             mtsr = tags.get('MakerNote TotalShutterReleases').values[0]
         except AttributeError, ex:
             log.error(('Attribute error', ex, curr_file))
-            if not self.cmd_line.options.queue_errors:
+            if not self.cmd_line.args.get('queue_errors'):
                 sys.exit(1)
             return ''
         except Exception, ex:
             log.error(('Error', ex, curr_file))
-            if not self.cmd_line.options.queue_errors:
+            if not self.cmd_line.args.get('queue_errors'):
                 sys.exit(1)
             else:
                 raise
@@ -247,14 +248,14 @@ class ProcessFiles(object):
             self.dto_str = tags.get('EXIF DateTimeOriginal').values
         except AttributeError, ex:
             log.error(('Attribute error', ex, curr_file))
-            if not self.cmd_line.options.queue_errors:
+            if not self.cmd_line.args.get('queue_errors'):
                 sys.exit(1)
             else:
                 raise Exception("Skip")
                 sys.exit()
         except Exception, ex:
             log.error(('Error', ex, curr_file))
-            if not self.cmd_line.options.queue_errors:
+            if not self.cmd_line.args.get('queue_errors'):
                 sys.exit(1)
             else:
                 raise
@@ -270,11 +271,11 @@ class ProcessFiles(object):
         self.new_name = self.new_name + self._get_extension(curr_file)
 
     def _queue_quit(self):
-        if not self.cmd_line.options.queue_errors:
+        if not self.cmd_line.args.get('queue_errors'):
             sys.exit(1)
 
     def _format_dirname(self, curr_dir, tags):
-        self.organized_dir = join(self.cmd_line.options.organized_dir,
+        self.organized_dir = join(self.cmd_line.args.get('organized_dir'),
             ORGANIZED_DIR_FORMAT % self.dto)
         log.debug(('organized_dir', self.organized_dir))
 
@@ -296,12 +297,12 @@ class ProcessFiles(object):
             log.error(('Skipped rename', self.target, ex))
 
     def _process_current_do(self, curr_file):
-        if not self.cmd_line.options.dry_run:
+        if not self.cmd_line.args.get('dry_run'):
             try:
                 os.rename(curr_file, self.target)
             except Exception, ex:
                 log.error(('Rename Failed', ex))
-                if not self.cmd_line.options.queue_errors:
+                if not self.cmd_line.args.get('queue_errors'):
                     sys.exit(1)
                 else:
                     raise
@@ -312,7 +313,7 @@ class ProcessFiles(object):
             join(self.organized_dir, self.new_name)))
 
         log.debug('Creating target dir')
-        if not self.cmd_line.options.dry_run:
+        if not self.cmd_line.args.get('dry_run'):
             try:
                 os.makedirs(self.organized_dir)
             except Exception, (errno, ex):
@@ -322,15 +323,15 @@ class ProcessFiles(object):
                     log.critical(('makedirs failed', errno, ex))
                     sys.exit(2)
 
-        if not self.cmd_line.options.dry_run:
+        if not self.cmd_line.args.get('dry_run'):
             try:
                 shutil.move(self.target, self.organized_dir)
             except shutil.Error as exc:
                 if 'already exists' in str(exc):
-                    if self.cmd_line.options.overwrite:
+                    if self.cmd_line.args.get('overwrite'):
                         if filecmp.cmp(self.target,
                             join(self.organized_dir, self.new_name)):
-                            if self.cmd_line.options.delete_dupes:
+                            if self.cmd_line.args.get('delete_dupes'):
                                 try:
                                     os.remove(self.target)
                                 except Exception, ex:
@@ -354,10 +355,10 @@ class CompressedMirror(object):
 
     def __init__(self, cmd_line):
         self.cmd_line = cmd_line
-        self.compressed_mirror = self.cmd_line.options.compressed_mirror
+        self.compressed_mirror = self.cmd_line.args.get('compressed_mirror')
         self._setup_path(self.compressed_mirror)
-        self.size = (self.cmd_line.options.compressed_dimension,
-                self.cmd_line.options.compressed_dimension)
+        self.size = (self.cmd_line.args.get('compressed_dimension'),
+                self.cmd_line.args.get('compressed_dimension'))
         log.debug('size: ' + str(self.size))
         self._walk()
 
@@ -374,14 +375,14 @@ class CompressedMirror(object):
     def _walk(self):
         '''Walk the path'''
         log.debug('begin')
-        log.debug('organized_dir:' + self.cmd_line.options.organized_dir)
-        for root, dirs, files in os.walk(self.cmd_line.options.organized_dir):
+        log.debug('organized_dir:' + self.cmd_line.args.get('organized_dir'))
+        for root, dirs, files in os.walk(self.cmd_line.args.get('organized_dir')):
             consume = sum(getsize(join(root, name)) \
                 for name in files) / (2 ** 20)
             log.info(root + 'consumes' + str(consume) + 'M in' +
                 str(len(files)) + 'non-directory files')
             for curr_file in files:
-                if self.cmd_line.options.verbose:
+                if self.cmd_line.args.get('verbose'):
                     log.debug(('curr_file', curr_file))
                 skip = False
                 for match in IGNORE_GLOB:
@@ -395,8 +396,8 @@ class CompressedMirror(object):
                         self._compress_current(root, curr_file)
 
     def _compress_current(self, root, curr_file):
-        postfix = '--%sx.jpg' % self.cmd_line.options.compressed_dimension
-        sliced_root = root[len(self.cmd_line.options.organized_dir)+1:]
+        postfix = '--%sx.jpg' % self.cmd_line.args.get('compressed_dimension')
+        sliced_root = root[len(self.cmd_line.args.get('organized_dir'))+1:]
         target_path = join(self.compressed_mirror, sliced_root)
         target_file = join(target_path, curr_file[:-4] + postfix)
         source_image = join(root, curr_file)
@@ -406,7 +407,7 @@ class CompressedMirror(object):
         #log.debug(('target_file', target_file))
         self._setup_path(target_path)
         if exists(target_file):
-            if self.cmd_line.options.overwrite:
+            if self.cmd_line.args.get('overwrite'):
                 log.debug('Overwriting: %s'  % target_file)
                 self._write_file(source_image, target_file)
             else:
@@ -417,7 +418,7 @@ class CompressedMirror(object):
         #log.debug(('source_image', source_image))
 
     def _write_file(self, source_image, target_file):
-        if self.cmd_line.options.dry_run:
+        if self.cmd_line.args.get('dry_run'):
             return
         try:
             source_img = Image.open(source_image)
@@ -434,7 +435,7 @@ def main():
     cmd_line = CommandLineParameters()
     if not cmd_line.skip_processfiles:
         ProcessFiles(cmd_line)
-    if cmd_line.options.compressed_mirror:
+    if cmd_line.args.get('compressed_mirror'):
         print 'Compress Mirror'
         CompressedMirror(cmd_line)
 
